@@ -1,0 +1,8 @@
+{
+  "name": "Successions · 3r d'ESO",
+  "description": "Eina de projecció a l'aula per practicar successions numèriques i termes generals (simplificats i no simplificats) a 3r d'ESO.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
