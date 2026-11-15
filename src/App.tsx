@@ -12,6 +12,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
+import { AccessGate } from './components/AccessGate';
 import { MathExpr } from './components/MathExpr';
 import { generateQuestion } from './data/sequenceGenerator';
 import {
@@ -41,11 +42,47 @@ function renderContextText(text: string): React.ReactNode {
   );
 }
 
+const UNLOCK_STORAGE_KEY = 'successions_3r_eso_unlocked';
+
 export default function App() {
+  const [isUnlocked, setIsUnlocked] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem(UNLOCK_STORAGE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  if (!isUnlocked) {
+    return (
+      <AccessGate
+        onUnlock={() => {
+          try {
+            sessionStorage.setItem(UNLOCK_STORAGE_KEY, '1');
+          } catch {
+            // Ignore storage restrictions
+          }
+          setIsUnlocked(true);
+        }}
+      />
+    );
+  }
+
+  return <SequenceApp />;
+}
+
+function SequenceApp() {
   const usedKeysRef = useRef<Set<string>>(new Set());
 
   const [topicFilter, setTopicFilter] = useState<TopicFilter>('all');
   const [includeContext, setIncludeContext] = useState(true);
+  const isStudentOnly = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('mode') === 'alumne';
+  }, []);
+  const [practiceMode, setPracticeMode] = useState<'aula' | 'alumne'>(() =>
+    isStudentOnly ? 'alumne' : 'aula'
+  );
   const [history, setHistory] = useState<SessionEntry[]>(() => {
     const first = generateQuestion(0, 'all', usedKeysRef.current, true);
     return [
@@ -149,8 +186,9 @@ export default function App() {
   const handleSelectOption = useCallback(
     (optionId: OptionId) => {
       if (currentEntry.revealed) return;
-      // Clicking an already-selected option checks immediately; clicking a new option selects it
-      if (currentEntry.selectedOptionId === optionId) {
+      // In individual student practice mode, clicking an option checks immediately (1 tap).
+      // In classroom projection mode, 1st click highlights class choice and 2nd click (or Enter) checks.
+      if (practiceMode === 'alumne' || currentEntry.selectedOptionId === optionId) {
         handleCheckAnswer(optionId);
         return;
       }
@@ -160,7 +198,13 @@ export default function App() {
         )
       );
     },
-    [currentEntry.revealed, currentEntry.selectedOptionId, currentIdx, handleCheckAnswer]
+    [
+      currentEntry.revealed,
+      currentEntry.selectedOptionId,
+      currentIdx,
+      handleCheckAnswer,
+      practiceMode,
+    ]
   );
 
   const handleNextScreen = useCallback(() => {
@@ -333,18 +377,20 @@ export default function App() {
             <span>{promptModeLabel}</span>
             <span aria-hidden="true">·</span>
             <span>
-              Encerts de l’aula: {stats.correct} / {stats.answered}
+              {practiceMode === 'alumne'
+                ? `Encerts: ${stats.correct} / ${stats.answered}`
+                : `Encerts de l’aula: ${stats.correct} / ${stats.answered}`}
             </span>
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* Compact topic selector on small screens */}
-            <div className="flex md:hidden items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+            {/* Compact topic selector & reset on small screens */}
+            <div className="flex md:hidden items-center gap-2">
               <select
                 aria-label="Filtre de successions"
                 value={topicFilter}
                 onChange={(e) => startFreshSession(e.target.value as TopicFilter)}
-                className="bg-transparent border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs font-medium text-slate-800 dark:text-slate-200"
+                className="bg-transparent border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200 min-h-[36px]"
               >
                 {TOPIC_OPTIONS.map((t) => (
                   <option key={t.id} value={t.id} className="bg-white dark:bg-slate-900">
@@ -352,7 +398,47 @@ export default function App() {
                   </option>
                 ))}
               </select>
+              <button
+                type="button"
+                onClick={() => startFreshSession(topicFilter)}
+                aria-label="Nova sessió"
+                className="p-2 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
             </div>
+
+            {/* Interactive Mode Switcher (hidden when ?mode=alumne is used for students) */}
+            {!isStudentOnly && (
+              <div
+                role="group"
+                aria-label="Mode d'ús"
+                className="flex items-center gap-1 p-0.5 bg-slate-200/70 dark:bg-slate-800 rounded-lg"
+              >
+                <button
+                  type="button"
+                  onClick={() => setPracticeMode('aula')}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    practiceMode === 'aula'
+                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+                  }`}
+                >
+                  Projecció aula
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPracticeMode('alumne')}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    practiceMode === 'alumne'
+                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+                  }`}
+                >
+                  Pràctica alumne
+                </button>
+              </div>
+            )}
 
             {topicFilter !== 'context' && (
               <button
@@ -590,20 +676,22 @@ export default function App() {
               </div>
             ) : (
               <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-                {currentEntry.selectedOptionId
-                  ? `L’alumnat ha indicat l’opció ${currentEntry.selectedOptionId}. Prem «Comprovar resultat» o Enter.`
-                  : 'Feu clic a l’opció A, B, C o D que indiqui l’alumnat des del seu lloc (tecles A–D).'}
+                {practiceMode === 'alumne'
+                  ? 'Tria l’opció A, B, C o D que creguis correcta (tecles A–D).'
+                  : currentEntry.selectedOptionId
+                    ? `L’alumnat ha indicat l’opció ${currentEntry.selectedOptionId}. Prem «Comprovar resultat» o Enter.`
+                    : 'Feu clic a l’opció A, B, C o D que indiqui l’alumnat des del seu lloc (tecles A–D).'}
               </p>
             )}
           </div>
 
-          {/* Right: Teacher flow controls */}
+          {/* Right: Teacher / student flow controls */}
           <div className="flex items-center justify-end gap-3 shrink-0">
             <button
               type="button"
               disabled={currentIdx === 0}
               onClick={handlePrevScreen}
-              className="px-4 py-2.5 text-sm font-medium rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none transition-colors whitespace-nowrap shrink-0 inline-flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+              className="min-h-[44px] px-4 py-2.5 text-sm font-medium rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none transition-colors whitespace-nowrap shrink-0 inline-flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
             >
               <ArrowLeft className="w-4 h-4" aria-hidden="true" />
               <span>Anterior</span>
@@ -615,29 +703,33 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => handleCheckAnswer()}
-                    className="px-4 py-2.5 text-sm font-medium rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0 inline-flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+                    className="min-h-[44px] px-4 py-2.5 text-sm font-medium rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0 inline-flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
                   >
                     <Eye className="w-4 h-4" aria-hidden="true" />
                     <span>Mostra la solució</span>
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  disabled={!currentEntry.selectedOptionId}
-                  onClick={() => handleCheckAnswer()}
-                  className="px-5 py-2.5 text-sm font-semibold rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-600 disabled:pointer-events-none transition-colors whitespace-nowrap shrink-0 inline-flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
-                >
-                  <span>Comprovar resultat</span>
-                </button>
+                {practiceMode === 'aula' && (
+                  <button
+                    type="button"
+                    disabled={!currentEntry.selectedOptionId}
+                    onClick={() => handleCheckAnswer()}
+                    className="min-h-[44px] px-5 py-2.5 text-sm font-semibold rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-600 disabled:pointer-events-none transition-colors whitespace-nowrap shrink-0 inline-flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                  >
+                    <span>Comprovar resultat</span>
+                  </button>
+                )}
               </>
             ) : (
               <button
                 type="button"
                 onClick={handleNextScreen}
-                className="px-5 py-2.5 text-sm font-semibold rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors whitespace-nowrap shrink-0 inline-flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="min-h-[44px] px-5 py-2.5 text-sm font-semibold rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors whitespace-nowrap shrink-0 inline-flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
               >
-                <span>Següent pantalla</span>
+                <span>
+                  {practiceMode === 'alumne' ? 'Següent pregunta' : 'Següent pantalla'}
+                </span>
                 <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </button>
             )}
