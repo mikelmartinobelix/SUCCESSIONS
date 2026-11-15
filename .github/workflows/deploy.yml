@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: 22
       - name: Instal·la dependències
-        run: run: npm install --legacy-peer-deps
+        run: npm install --legacy-peer-deps
       - name: Compila l'aplicació
         run: npm run build
       - name: Prepara l'artefacte de Pages
